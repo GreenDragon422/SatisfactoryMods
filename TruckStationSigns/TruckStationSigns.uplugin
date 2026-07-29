@@ -1,0 +1,30 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1.0",
+	"SemVersion": "0.1.0",
+	"GameVersion": ">=491125",
+	"FriendlyName": "Truck Station Signs",
+	"Description": "Automatically displays each Truck Station name on a vanilla rear sign.",
+	"Category": "Factory",
+	"CreatedBy": "mikiw",
+	"CanContainContent": false,
+	"IsBetaVersion": true,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"BuiltInInitialFeatureState": "Active",
+	"Modules": [
+		{
+			"Name": "TruckStationSigns",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "SML",
+			"Enabled": true,
+			"SemVersion": "^3.12.0"
+		}
+	]
+}
