@@ -31,6 +31,7 @@
 		{
 			"Name": "AbstractInstance",
 			"Enabled": true,
+			"BasePlugin": true,
 			"Optional": true
 		}
 	]
