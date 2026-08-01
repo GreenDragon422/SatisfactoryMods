@@ -23,12 +23,16 @@ public:
 	void OnStationNameChanged(AFGDockingStationIdentifier* identifier);
 	void DisableInteraction(AFGBuildableWidgetSign* sign) const;
 	bool IsSupportedStation(const AFGBuildableDockingStation* station) const;
+	AFGBuildableWidgetSign* RecreateSignAtRelativeTransformForVisualTest(
+		AFGBuildableDockingStation* station,
+		const FTransform& relativeTransform);
 
 private:
 	AFGBuildableWidgetSign* FindTrackedOrAttachedSign(AFGBuildableDockingStation* station);
-	AFGBuildableWidgetSign* SpawnSign(AFGBuildableDockingStation* station);
+	AFGBuildableWidgetSign* SpawnSign(
+		AFGBuildableDockingStation* station,
+		const FTransform& relativeTransform);
 	void ApplyNameToSign(AFGBuildableWidgetSign* sign, const FText& stationName);
-	void RemoveLegacyGeneratedSigns(UWorld* world);
 	void DestroyGeneratedSign(AFGBuildableWidgetSign* sign);
 
 	TStrongObjectPtr<UClass> standardTruckStationClass;

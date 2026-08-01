@@ -11,10 +11,12 @@ class TRUCKSTATIONSIGNS_API FTruckStationSignPolicy final
 {
 public:
 	static FTransform GetFrontSignRelativeTransform();
+	static FTransform GetSignRelativeTransform(
+		const UClass* stationClass,
+		const UClass* standardTruckStationClass,
+		const UClass* fluidTruckStationClass);
 	static FName GetCurrentGeneratedSignTag();
-	static FName GetLegacyGeneratedSignTag();
 	static bool IsCurrentGeneratedSign(const AActor* actor);
-	static bool IsGeneratedSign(const AActor* actor);
 	static bool ShouldSaveGeneratedSign();
 	static bool ShouldDeleteGeneratedSign(EEndPlayReason::Type reason);
 
