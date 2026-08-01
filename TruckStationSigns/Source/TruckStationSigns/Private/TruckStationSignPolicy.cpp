@@ -4,22 +4,41 @@
 
 namespace TruckStationSignPolicyConstants
 {
-	constexpr float FrontSignLocalYCentimeters = -500.0f;
-	constexpr float FrontSignHeightCentimeters = 286.0f;
-	const FName CurrentGeneratedSignTag(TEXT("TruckStationSigns.Automatic.V4"));
-	const FName PreviousGeneratedSignTag(TEXT("TruckStationSigns.Automatic.V3"));
-	const FName OlderGeneratedSignTag(TEXT("TruckStationSigns.Automatic.V2"));
-	const FName LegacyGeneratedSignTag(TEXT("TruckStationSigns.Automatic"));
+	const FVector StandardSignRelativeLocation(0.0f, -536.0f, 245.0f);
+	const FVector FluidSignRelativeLocation(0.0f, -440.0f, 461.0f);
+	const FName CurrentGeneratedSignTag(TEXT("TruckStationSigns.Automatic"));
 }
 
 FTransform FTruckStationSignPolicy::GetFrontSignRelativeTransform()
 {
 	return FTransform(
 		FRotator::ZeroRotator,
-		FVector(
-			0.0f,
-			TruckStationSignPolicyConstants::FrontSignLocalYCentimeters,
-			TruckStationSignPolicyConstants::FrontSignHeightCentimeters));
+		TruckStationSignPolicyConstants::StandardSignRelativeLocation);
+}
+
+FTransform FTruckStationSignPolicy::GetSignRelativeTransform(
+	const UClass* stationClass,
+	const UClass* standardTruckStationClass,
+	const UClass* fluidTruckStationClass)
+{
+	if (stationClass != nullptr &&
+		fluidTruckStationClass != nullptr &&
+		stationClass->IsChildOf(fluidTruckStationClass))
+	{
+		return FTransform(
+			FRotator::ZeroRotator,
+			TruckStationSignPolicyConstants::FluidSignRelativeLocation);
+	}
+	if (stationClass != nullptr &&
+		standardTruckStationClass != nullptr &&
+		stationClass->IsChildOf(standardTruckStationClass))
+	{
+		return FTransform(
+			FRotator::ZeroRotator,
+			TruckStationSignPolicyConstants::StandardSignRelativeLocation);
+	}
+
+	return GetFrontSignRelativeTransform();
 }
 
 FName FTruckStationSignPolicy::GetCurrentGeneratedSignTag()
@@ -27,23 +46,9 @@ FName FTruckStationSignPolicy::GetCurrentGeneratedSignTag()
 	return TruckStationSignPolicyConstants::CurrentGeneratedSignTag;
 }
 
-FName FTruckStationSignPolicy::GetLegacyGeneratedSignTag()
-{
-	return TruckStationSignPolicyConstants::LegacyGeneratedSignTag;
-}
-
 bool FTruckStationSignPolicy::IsCurrentGeneratedSign(const AActor* actor)
 {
 	return IsValid(actor) && actor->Tags.Contains(GetCurrentGeneratedSignTag());
-}
-
-bool FTruckStationSignPolicy::IsGeneratedSign(const AActor* actor)
-{
-	return IsValid(actor) &&
-		(IsCurrentGeneratedSign(actor) ||
-			actor->Tags.Contains(TruckStationSignPolicyConstants::PreviousGeneratedSignTag) ||
-			actor->Tags.Contains(TruckStationSignPolicyConstants::OlderGeneratedSignTag) ||
-			actor->Tags.Contains(GetLegacyGeneratedSignTag()));
 }
 
 bool FTruckStationSignPolicy::ShouldSaveGeneratedSign()

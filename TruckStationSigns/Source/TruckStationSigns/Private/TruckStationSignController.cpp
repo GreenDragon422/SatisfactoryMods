@@ -69,8 +69,6 @@ int32 FTruckStationSignController::RefreshWorld(UWorld* world)
 		return 0;
 	}
 
-	RemoveLegacyGeneratedSigns(world);
-
 	ownershipRegistry.RemoveInvalidEntries();
 	TMap<TWeakObjectPtr<AFGBuildableWidgetSign>, FString>::TIterator nameIterator = appliedNames.CreateIterator();
 	while (nameIterator)
@@ -88,31 +86,6 @@ int32 FTruckStationSignController::RefreshWorld(UWorld* world)
 		if (EnsureSign(*stationIterator) != nullptr)
 		{
 			++activeSignCount;
-		}
-	}
-
-	TArray<AFGBuildableWidgetSign*> orphanedSigns;
-	for (TActorIterator<AFGBuildableWidgetSign> signIterator(world); signIterator; ++signIterator)
-	{
-		AFGBuildableWidgetSign* sign = *signIterator;
-		if (!FTruckStationSignPolicy::IsCurrentGeneratedSign(sign))
-		{
-			continue;
-		}
-
-		AFGBuildableDockingStation* station = Cast<AFGBuildableDockingStation>(sign->GetOwner());
-		if (!IsSupportedStation(station))
-		{
-			orphanedSigns.Add(sign);
-		}
-	}
-
-	for (AFGBuildableWidgetSign* sign : orphanedSigns)
-	{
-		if (IsValid(sign) && sign->HasAuthority())
-		{
-			appliedNames.Remove(sign);
-			sign->Destroy();
 		}
 	}
 
@@ -138,7 +111,7 @@ void FTruckStationSignController::OnStationEndPlay(
 		for (AActor* attachedActor : attachedActors)
 		{
 			AFGBuildableWidgetSign* attachedSign = Cast<AFGBuildableWidgetSign>(attachedActor);
-			if (attachedSign != trackedSign && FTruckStationSignPolicy::IsGeneratedSign(attachedSign))
+			if (attachedSign != trackedSign && FTruckStationSignPolicy::IsCurrentGeneratedSign(attachedSign))
 			{
 				DestroyGeneratedSign(attachedSign);
 			}
@@ -172,9 +145,13 @@ AFGBuildableWidgetSign* FTruckStationSignController::EnsureSign(AFGBuildableDock
 	}
 
 	AFGBuildableWidgetSign* sign = FindTrackedOrAttachedSign(station);
+	const FTransform signRelativeTransform = FTruckStationSignPolicy::GetSignRelativeTransform(
+		station->GetClass(),
+		standardTruckStationClass.Get(),
+		fluidTruckStationClass.Get());
 	if (sign == nullptr)
 	{
-		sign = SpawnSign(station);
+		sign = SpawnSign(station, signRelativeTransform);
 	}
 
 	if (IsValid(sign) && IFGSaveInterface::Execute_ShouldSave(sign))
@@ -191,7 +168,7 @@ AFGBuildableWidgetSign* FTruckStationSignController::EnsureSign(AFGBuildableDock
 
 	if (sign != nullptr)
 	{
-		sign->SetActorRelativeTransform(FTruckStationSignPolicy::GetFrontSignRelativeTransform());
+		sign->SetActorRelativeTransform(signRelativeTransform);
 		AFGDockingStationIdentifier* identifier = station->GetStationIdentifier();
 		const FText stationName = identifier != nullptr ? identifier->GetStationName() : FText::GetEmpty();
 		ApplyNameToSign(sign, stationName);
@@ -224,6 +201,36 @@ bool FTruckStationSignController::IsSupportedStation(const AFGBuildableDockingSt
 		fluidTruckStationClass.Get());
 }
 
+AFGBuildableWidgetSign* FTruckStationSignController::RecreateSignAtRelativeTransformForVisualTest(
+	AFGBuildableDockingStation* station,
+	const FTransform& relativeTransform)
+{
+	if (!automaticSignGenerationEnabled ||
+		!IsValid(station) ||
+		!station->HasAuthority() ||
+		!IsSupportedStation(station))
+	{
+		return nullptr;
+	}
+
+	AFGBuildableWidgetSign* existingSign = FindTrackedOrAttachedSign(station);
+	ownershipRegistry.Remove(station);
+	DestroyGeneratedSign(existingSign);
+
+	AFGBuildableWidgetSign* recreatedSign = SpawnSign(station, relativeTransform);
+	if (!IsValid(recreatedSign))
+	{
+		return nullptr;
+	}
+
+	AFGDockingStationIdentifier* identifier = station->GetStationIdentifier();
+	const FText stationName = identifier != nullptr
+		? identifier->GetStationName()
+		: FText::GetEmpty();
+	ApplyNameToSign(recreatedSign, stationName);
+	return recreatedSign;
+}
+
 AFGBuildableWidgetSign* FTruckStationSignController::FindTrackedOrAttachedSign(
 	AFGBuildableDockingStation* station)
 {
@@ -249,7 +256,9 @@ AFGBuildableWidgetSign* FTruckStationSignController::FindTrackedOrAttachedSign(
 	return nullptr;
 }
 
-AFGBuildableWidgetSign* FTruckStationSignController::SpawnSign(AFGBuildableDockingStation* station)
+AFGBuildableWidgetSign* FTruckStationSignController::SpawnSign(
+	AFGBuildableDockingStation* station,
+	const FTransform& relativeTransform)
 {
 	UWorld* world = station->GetWorld();
 	if (world == nullptr || !signClass.IsValid())
@@ -257,7 +266,6 @@ AFGBuildableWidgetSign* FTruckStationSignController::SpawnSign(AFGBuildableDocki
 		return nullptr;
 	}
 
-	const FTransform relativeTransform = FTruckStationSignPolicy::GetFrontSignRelativeTransform();
 	const FTransform worldTransform = relativeTransform * station->GetActorTransform();
 	FActorSpawnParameters spawnParameters;
 	spawnParameters.Owner = station;
@@ -291,29 +299,9 @@ AFGBuildableWidgetSign* FTruckStationSignController::SpawnSign(AFGBuildableDocki
 		ownershipRegistry.Remove(station);
 		return nullptr;
 	}
-
 	DisableInteraction(sign);
 
 	return sign;
-}
-
-void FTruckStationSignController::RemoveLegacyGeneratedSigns(UWorld* world)
-{
-	TArray<AFGBuildableWidgetSign*> legacySigns;
-	for (TActorIterator<AFGBuildableWidgetSign> signIterator(world); signIterator; ++signIterator)
-	{
-		AFGBuildableWidgetSign* sign = *signIterator;
-		if (FTruckStationSignPolicy::IsGeneratedSign(sign) &&
-			!FTruckStationSignPolicy::IsCurrentGeneratedSign(sign))
-		{
-			legacySigns.Add(sign);
-		}
-	}
-
-	for (AFGBuildableWidgetSign* legacySign : legacySigns)
-	{
-		DestroyGeneratedSign(legacySign);
-	}
 }
 
 void FTruckStationSignController::DestroyGeneratedSign(AFGBuildableWidgetSign* sign)

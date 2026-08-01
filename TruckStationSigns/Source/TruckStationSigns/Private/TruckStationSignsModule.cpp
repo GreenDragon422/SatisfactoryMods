@@ -1,7 +1,10 @@
 #include "Modules/ModuleManager.h"
 
 #include "TruckStationSignController.h"
-#include "TruckStationSignConsoleCommands.h"
+#if TRUCKSTATIONSIGNS_WITH_TESTS
+#include "Tests/TruckStationSignBridgeCommands.h"
+#include "Tests/TruckStationSignConsoleCommands.h"
+#endif
 #include "TruckStationSignPolicy.h"
 #include "TruckStationSignsLog.h"
 
@@ -31,11 +34,19 @@ public:
 
 	virtual void ShutdownModule() override
 	{
+#if TRUCKSTATIONSIGNS_WITH_TESTS
+		if (bridgeCommands.IsValid())
+		{
+			bridgeCommands->Unregister();
+			bridgeCommands.Reset();
+		}
+
 		if (consoleCommands.IsValid())
 		{
 			consoleCommands->Unregister();
 			consoleCommands.Reset();
 		}
+#endif
 
 		if (postLoadMapHandle.IsValid())
 		{
@@ -65,7 +76,7 @@ private:
 	{
 		if (world == nullptr ||
 			!world->IsGameWorld() ||
-			!world->GetMapName().Contains(TEXT("Persistent_Level")))
+			world->GetMapName().Contains(TEXT("Map_Menu")))
 		{
 			return;
 		}
@@ -83,8 +94,14 @@ private:
 				return;
 			}
 
-			consoleCommands = MakeUnique<FTruckStationSignConsoleCommands>(controller.Get());
+
+#if TRUCKSTATIONSIGNS_WITH_TESTS
+			bridgeCommands = MakeUnique<TruckStationSigns::Tests::FTruckStationSignBridgeCommands>(controller.Get());
+			bridgeCommands->Register();
+
+			consoleCommands = MakeUnique<TruckStationSigns::Tests::FTruckStationSignConsoleCommands>(controller.Get());
 			consoleCommands->Register();
+#endif
 		}
 
 		if (world->HasBegunPlay())
@@ -146,7 +163,7 @@ private:
 				const UObject* object)
 			{
 				const AFGBuildableWidgetSign* sign = Cast<AFGBuildableWidgetSign>(object);
-				if (FTruckStationSignPolicy::IsGeneratedSign(sign))
+				if (FTruckStationSignPolicy::IsCurrentGeneratedSign(sign))
 				{
 					scope.Override(FTruckStationSignPolicy::ShouldSaveGeneratedSign());
 				}
@@ -195,7 +212,10 @@ private:
 	}
 
 	TUniquePtr<FTruckStationSignController> controller;
-	TUniquePtr<FTruckStationSignConsoleCommands> consoleCommands;
+#if TRUCKSTATIONSIGNS_WITH_TESTS
+	TUniquePtr<TruckStationSigns::Tests::FTruckStationSignBridgeCommands> bridgeCommands;
+	TUniquePtr<TruckStationSigns::Tests::FTruckStationSignConsoleCommands> consoleCommands;
+#endif
 	TMap<TWeakObjectPtr<UWorld>, FDelegateHandle> worldBeginPlayHandles;
 	FDelegateHandle postLoadMapHandle;
 };
