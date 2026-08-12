@@ -4,9 +4,10 @@
 
 #include "Buildables/FGBuildableDockingStation.h"
 #include "Buildables/FGBuildableWidgetSign.h"
+#include "Containers/Ticker.h"
 #include "Engine/World.h"
-#include "EngineUtils.h"
 #include "FGSaveInterface.h"
+#include "HAL/PlatformTime.h"
 #include "TruckStationSignsLog.h"
 #include "WheeledVehicles/FGDockingStationIdentifier.h"
 
@@ -22,6 +23,21 @@ namespace TruckStationSignControllerConstants
 		TEXT("/Game/FactoryGame/Interface/UI/InGame/Signs/SignLayouts/BPW_Sign4x1_1.BPW_Sign4x1_1_C");
 	const TCHAR* DescriptorClassPath =
 		TEXT("/Game/FactoryGame/Buildable/Factory/-Shared/SignTypes/SignTypeDesc_8x1.SignTypeDesc_8x1_C");
+	constexpr double InitializationFrameBudgetSeconds = 0.001;
+}
+
+struct FTruckStationSignInitializationState final
+{
+	TArray<TWeakObjectPtr<AFGBuildableDockingStation>> pendingStations;
+	FTSTicker::FDelegateHandle tickerHandle;
+	int32 nextStationIndex = 0;
+	int32 activeSignCount = 0;
+	double startedAtSeconds = FPlatformTime::Seconds();
+};
+
+FTruckStationSignController::~FTruckStationSignController()
+{
+	StopStationInitialization();
 }
 
 bool FTruckStationSignController::Initialize()
@@ -52,6 +68,7 @@ bool FTruckStationSignController::Initialize()
 
 void FTruckStationSignController::Reset()
 {
+	StopStationInitialization();
 	ownershipRegistry.Reset();
 	appliedNames.Reset();
 	automaticSignGenerationEnabled = false;
@@ -62,34 +79,89 @@ void FTruckStationSignController::Reset()
 	signTypeDescriptorClass.Reset();
 }
 
-int32 FTruckStationSignController::RefreshWorld(UWorld* world)
+void FTruckStationSignController::CancelPendingStationInitialization()
 {
-	if (world == nullptr)
+	StopStationInitialization();
+}
+
+void FTruckStationSignController::EnqueueStationInitialization(AFGBuildableDockingStation* station)
+{
+	if (!IsValid(station))
 	{
-		return 0;
+		return;
 	}
 
-	ownershipRegistry.RemoveInvalidEntries();
-	TMap<TWeakObjectPtr<AFGBuildableWidgetSign>, FString>::TIterator nameIterator = appliedNames.CreateIterator();
-	while (nameIterator)
+	if (!initializationState.IsValid())
 	{
-		if (!nameIterator.Key().IsValid())
+		initializationState = MakeUnique<FTruckStationSignInitializationState>();
+		initializationState->tickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+			FTickerDelegate::CreateRaw(this, &FTruckStationSignController::TickStationInitialization));
+		UE_LOG(
+			LogTruckStationSigns,
+			Display,
+			TEXT("Started event-driven Truck Station sign initialization with a %.3f ms per-frame budget."),
+			TruckStationSignControllerConstants::InitializationFrameBudgetSeconds * 1000.0);
+	}
+
+	initializationState->pendingStations.Add(station);
+}
+
+bool FTruckStationSignController::TickStationInitialization(float)
+{
+	if (!initializationState.IsValid())
+	{
+		return false;
+	}
+
+	const double frameStartSeconds = FPlatformTime::Seconds();
+	while (initializationState->nextStationIndex < initializationState->pendingStations.Num())
+	{
+		AFGBuildableDockingStation* station =
+			initializationState->pendingStations[initializationState->nextStationIndex].Get();
+		++initializationState->nextStationIndex;
+		if (EnsureSign(station) != nullptr)
 		{
-			nameIterator.RemoveCurrent();
+			++initializationState->activeSignCount;
 		}
-		++nameIterator;
-	}
-
-	int32 activeSignCount = 0;
-	for (TActorIterator<AFGBuildableDockingStation> stationIterator(world); stationIterator; ++stationIterator)
-	{
-		if (EnsureSign(*stationIterator) != nullptr)
+		if (FPlatformTime::Seconds() - frameStartSeconds >=
+			TruckStationSignControllerConstants::InitializationFrameBudgetSeconds)
 		{
-			++activeSignCount;
+			break;
 		}
 	}
 
-	return activeSignCount;
+	if (initializationState->nextStationIndex < initializationState->pendingStations.Num())
+	{
+		return true;
+	}
+
+	const int32 activeSignCount = initializationState->activeSignCount;
+	const double elapsedMilliseconds =
+		(FPlatformTime::Seconds() - initializationState->startedAtSeconds) * 1000.0;
+	initializationState->tickerHandle.Reset();
+	initializationState.Reset();
+	UE_LOG(
+		LogTruckStationSigns,
+		Display,
+		TEXT("Completed event-driven initialization of %d transient Truck Station signs in %.3f ms."),
+		activeSignCount,
+		elapsedMilliseconds);
+	return false;
+}
+
+void FTruckStationSignController::StopStationInitialization()
+{
+	if (!initializationState.IsValid())
+	{
+		return;
+	}
+
+	if (initializationState->tickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(initializationState->tickerHandle);
+		initializationState->tickerHandle.Reset();
+	}
+	initializationState.Reset();
 }
 
 void FTruckStationSignController::OnStationEndPlay(

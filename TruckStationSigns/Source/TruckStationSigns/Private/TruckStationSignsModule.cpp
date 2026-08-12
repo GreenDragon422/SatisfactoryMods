@@ -1,6 +1,7 @@
 #include "Modules/ModuleManager.h"
 
 #include "TruckStationSignController.h"
+#include "TruckStationSignPendingInitializationQueue.h"
 #if TRUCKSTATIONSIGNS_WITH_TESTS
 #include "Tests/TruckStationSignBridgeCommands.h"
 #include "Tests/TruckStationSignConsoleCommands.h"
@@ -26,6 +27,9 @@ public:
 	{
 #if !WITH_EDITOR
 		RegisterHooks();
+		preLoadMapHandle = FCoreUObjectDelegates::PreLoadMap.AddRaw(
+			this,
+			&FTruckStationSignsModule::OnPreLoadMap);
 		postLoadMapHandle = FCoreUObjectDelegates::PostLoadMapWithWorld.AddRaw(
 			this,
 			&FTruckStationSignsModule::OnPostLoadMap);
@@ -48,21 +52,19 @@ public:
 		}
 #endif
 
+		if (preLoadMapHandle.IsValid())
+		{
+			FCoreUObjectDelegates::PreLoadMap.Remove(preLoadMapHandle);
+			preLoadMapHandle.Reset();
+		}
+
 		if (postLoadMapHandle.IsValid())
 		{
 			FCoreUObjectDelegates::PostLoadMapWithWorld.Remove(postLoadMapHandle);
 			postLoadMapHandle.Reset();
 		}
 
-		for (const TPair<TWeakObjectPtr<UWorld>, FDelegateHandle>& worldHandle : worldBeginPlayHandles)
-		{
-			UWorld* world = worldHandle.Key.Get();
-			if (world != nullptr)
-			{
-				world->OnWorldBeginPlay.Remove(worldHandle.Value);
-			}
-		}
-		worldBeginPlayHandles.Empty();
+		pendingStationInitializations.Reset();
 
 		if (controller.IsValid())
 		{
@@ -72,12 +74,24 @@ public:
 	}
 
 private:
+	void OnPreLoadMap(const FString&)
+	{
+		mapLoadInProgress = true;
+		pendingStationInitializations.Reset();
+		if (controller.IsValid())
+		{
+			controller->CancelPendingStationInitialization();
+		}
+	}
+
 	void OnPostLoadMap(UWorld* world)
 	{
+		mapLoadInProgress = false;
 		if (world == nullptr ||
 			!world->IsGameWorld() ||
 			world->GetMapName().Contains(TEXT("Map_Menu")))
 		{
+			pendingStationInitializations.Reset();
 			return;
 		}
 
@@ -104,51 +118,11 @@ private:
 #endif
 		}
 
-		if (world->HasBegunPlay())
-		{
-			OnWorldBeginPlay(world);
-			return;
-		}
-
-		const TWeakObjectPtr<UWorld> worldKey(world);
-		if (worldBeginPlayHandles.Contains(worldKey))
-		{
-			return;
-		}
-
-		const FDelegateHandle worldBeginPlayHandle = world->OnWorldBeginPlay.AddRaw(
-			this,
-			&FTruckStationSignsModule::OnWorldBeginPlay,
-			world);
-		worldBeginPlayHandles.Add(worldKey, worldBeginPlayHandle);
-	}
-
-	void OnWorldBeginPlay(UWorld* world)
-	{
-		if (world == nullptr)
-		{
-			return;
-		}
-
-		const TWeakObjectPtr<UWorld> worldKey(world);
-		const FDelegateHandle* worldBeginPlayHandle = worldBeginPlayHandles.Find(worldKey);
-		if (worldBeginPlayHandle != nullptr)
-		{
-			world->OnWorldBeginPlay.Remove(*worldBeginPlayHandle);
-			worldBeginPlayHandles.Remove(worldKey);
-		}
-
-		if (!controller.IsValid())
-		{
-			return;
-		}
-
-		const int32 activeSignCount = controller->RefreshWorld(world);
-		UE_LOG(
-			LogTruckStationSigns,
-			Display,
-			TEXT("Initialized %d transient truck station signs after world BeginPlay completed."),
-			activeSignCount);
+		pendingStationInitializations.Drain(
+			[this](AFGBuildableDockingStation* station)
+			{
+				controller->EnqueueStationInitialization(station);
+			});
 	}
 
 	void RegisterHooks()
@@ -174,11 +148,15 @@ private:
 			BeginPlay,
 			[this](AFGBuildableDockingStation* station)
 			{
-				const TWeakObjectPtr<UWorld> worldKey(station != nullptr ? station->GetWorld() : nullptr);
-				if (controller.IsValid() && !worldBeginPlayHandles.Contains(worldKey))
+				// Loaded stations receive BeginPlay before UWorld::OnWorldBeginPlay broadcasts.
+				// Queue those authoritative events so initialization never needs a world scan.
+				if (mapLoadInProgress || !controller.IsValid())
 				{
-					controller->EnsureSign(station);
+					pendingStationInitializations.Enqueue(station);
+					return;
 				}
+
+				controller->EnsureSign(station);
 			});
 
 		SUBSCRIBE_UOBJECT_METHOD_AFTER(
@@ -216,7 +194,9 @@ private:
 	TUniquePtr<TruckStationSigns::Tests::FTruckStationSignBridgeCommands> bridgeCommands;
 	TUniquePtr<TruckStationSigns::Tests::FTruckStationSignConsoleCommands> consoleCommands;
 #endif
-	TMap<TWeakObjectPtr<UWorld>, FDelegateHandle> worldBeginPlayHandles;
+	TruckStationSigns::Lifecycle::FPendingInitializationQueue pendingStationInitializations;
+	bool mapLoadInProgress = false;
+	FDelegateHandle preLoadMapHandle;
 	FDelegateHandle postLoadMapHandle;
 };
 

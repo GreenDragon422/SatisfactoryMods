@@ -16,7 +16,7 @@ Automatically displays the player-assigned name of each standard or Fluid Truck 
 
 Provides a deliberately destructive cleanup action for connected conveyor networks. Pressing `Ctrl+Shift+Delete` while aiming at a belt starts a server-authoritative purge that follows connected belts through conveyor attachments and removes belt items, attachment buffers, and fed machine input inventories in bounded batches.
 
-### [Codex Bridge](CodexBridge)
+### [Satisfactory Bridge](SatisfactoryBridge)
 
 Connects Satisfactory to Codex Desktop through a local companion service and a secured named pipe. In-game console commands can send a message to a dedicated Codex task, report the bridge connection status, and start a new task for the next message.
 
