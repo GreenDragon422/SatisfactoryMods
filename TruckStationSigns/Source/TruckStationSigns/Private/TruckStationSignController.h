@@ -10,13 +10,17 @@ class AFGDockingStationIdentifier;
 class UFGSignPrefabWidget;
 class UFGSignTypeDescriptor;
 class UWorld;
+struct FTruckStationSignInitializationState;
 
 class FTruckStationSignController final
 {
 public:
+	~FTruckStationSignController();
+
 	bool Initialize();
 	void Reset();
-	int32 RefreshWorld(UWorld* world);
+	void CancelPendingStationInitialization();
+	void EnqueueStationInitialization(AFGBuildableDockingStation* station);
 
 	AFGBuildableWidgetSign* EnsureSign(AFGBuildableDockingStation* station);
 	void OnStationEndPlay(AFGBuildableDockingStation* station, EEndPlayReason::Type reason);
@@ -28,6 +32,8 @@ public:
 		const FTransform& relativeTransform);
 
 private:
+	bool TickStationInitialization(float deltaSeconds);
+	void StopStationInitialization();
 	AFGBuildableWidgetSign* FindTrackedOrAttachedSign(AFGBuildableDockingStation* station);
 	AFGBuildableWidgetSign* SpawnSign(
 		AFGBuildableDockingStation* station,
@@ -40,6 +46,7 @@ private:
 	TStrongObjectPtr<UClass> signClass;
 	TStrongObjectPtr<UClass> prefabLayoutClass;
 	TStrongObjectPtr<UClass> signTypeDescriptorClass;
+	TUniquePtr<FTruckStationSignInitializationState> initializationState;
 	FTruckStationSignOwnershipRegistry ownershipRegistry;
 	TMap<TWeakObjectPtr<AFGBuildableWidgetSign>, FString> appliedNames;
 	bool automaticSignGenerationEnabled = false;
