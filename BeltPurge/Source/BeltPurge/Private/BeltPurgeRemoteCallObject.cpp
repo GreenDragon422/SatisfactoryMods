@@ -1,7 +1,6 @@
 #include "BeltPurgeRemoteCallObject.h"
 
 #include "BeltPurgeService.h"
-#include "Buildables/FGBuildableConveyorBelt.h"
 #include "Net/UnrealNetwork.h"
 
 void UBeltPurgeRemoteCallObject::GetLifetimeReplicatedProps(
@@ -12,7 +11,7 @@ void UBeltPurgeRemoteCallObject::GetLifetimeReplicatedProps(
 }
 
 void UBeltPurgeRemoteCallObject::ServerPurgeNetwork_Implementation(
-	AFGBuildableConveyorBelt* belt)
+	AFGBuildable* target)
 {
-	UBeltPurgeService::PurgeNetwork(belt);
+	UBeltPurgeService::PurgeNetwork(target);
 }
