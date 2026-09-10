@@ -5,7 +5,7 @@
 
 #include "BeltPurgeRemoteCallObject.generated.h"
 
-class AFGBuildableConveyorBelt;
+class AFGBuildable;
 
 UCLASS()
 class BELTPURGE_API UBeltPurgeRemoteCallObject final : public UFGRemoteCallObject
@@ -16,7 +16,7 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	UFUNCTION(Server, Reliable)
-	void ServerPurgeNetwork(AFGBuildableConveyorBelt* belt);
+	void ServerPurgeNetwork(AFGBuildable* target);
 
 private:
 	UPROPERTY(Replicated)
