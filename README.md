@@ -10,11 +10,15 @@ This repository is a curated public export of the development workspace. Generat
 
 Automatically displays the player-assigned name of each standard or Fluid Truck Station on a centered vanilla 8x1 sign at the front of the station. The generated sign is transient, is not stored in the save, and is removed with its station.
 
-## In Development
-
 ### [Belt Purge](BeltPurge)
 
-Provides a deliberately destructive cleanup action for connected conveyor networks. Pressing `Ctrl+Shift+Delete` while aiming at a belt starts a server-authoritative purge that follows connected belts through conveyor attachments and removes belt items, attachment buffers, and fed machine input inventories in bounded batches.
+Released: [0.1.1 (beta)](https://github.com/GreenDragon422/SatisfactoryMods/tree/BeltPurge/v0.1.1).
+
+Aim at a belt, lift, splitter, or merger and press `Ctrl+Shift+Delete` to permanently delete sinkable items from the connected conveyor network, splitter and merger buffers, and fed machine input inventories, including fuel inputs. The purge follows branches and stops at machines and stations; it does not clear machine outputs or storage contents.
+
+Unsinkable items remain, along with any items behind them on the same conveyor chain. Deleted items are not returned to your inventory and do not earn AWESOME Sink points. Stop or disconnect incoming supplies if you want the network to stay empty.
+
+## In Development
 
 ### [Satisfactory Bridge](SatisfactoryBridge)
 
