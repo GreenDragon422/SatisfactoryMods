@@ -407,6 +407,6 @@ void FTruckStationSignController::ApplyNameToSign(
 		stationName,
 		TSubclassOf<UFGSignPrefabWidget>(prefabLayoutClass.Get()),
 		TSubclassOf<UFGSignTypeDescriptor>(signTypeDescriptorClass.Get()));
-	sign->SetPrefabSignData(signData, false);
+	sign->SetPrefabSignData(signData);
 	appliedNames.Add(sign, requestedName);
 }
