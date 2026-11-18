@@ -33,6 +33,9 @@ public:
 		postLoadMapHandle = FCoreUObjectDelegates::PostLoadMapWithWorld.AddRaw(
 			this,
 			&FTruckStationSignsModule::OnPostLoadMap);
+		worldTearDownHandle = FWorldDelegates::OnWorldBeginTearDown.AddRaw(
+			this,
+			&FTruckStationSignsModule::OnWorldBeginTearDown);
 #endif
 	}
 
@@ -63,6 +66,11 @@ public:
 			FCoreUObjectDelegates::PostLoadMapWithWorld.Remove(postLoadMapHandle);
 			postLoadMapHandle.Reset();
 		}
+		if (worldTearDownHandle.IsValid())
+		{
+			FWorldDelegates::OnWorldBeginTearDown.Remove(worldTearDownHandle);
+			worldTearDownHandle.Reset();
+		}
 
 		pendingStationInitializations.Reset();
 
@@ -74,6 +82,18 @@ public:
 	}
 
 private:
+	void OnWorldBeginTearDown(UWorld* world)
+	{
+		if (activeWorld.Get() == world)
+		{
+			activeWorld.Reset();
+			if (controller.IsValid())
+			{
+				controller->CancelPendingStationInitialization();
+			}
+		}
+	}
+
 	void OnPreLoadMap(const FString&)
 	{
 		mapLoadInProgress = true;
@@ -94,6 +114,7 @@ private:
 			pendingStationInitializations.Reset();
 			return;
 		}
+		activeWorld = world;
 
 		if (!controller.IsValid())
 		{
@@ -198,6 +219,8 @@ private:
 	bool mapLoadInProgress = false;
 	FDelegateHandle preLoadMapHandle;
 	FDelegateHandle postLoadMapHandle;
+	FDelegateHandle worldTearDownHandle;
+	TWeakObjectPtr<UWorld> activeWorld;
 };
 
 IMPLEMENT_GAME_MODULE(FTruckStationSignsModule, TruckStationSigns)

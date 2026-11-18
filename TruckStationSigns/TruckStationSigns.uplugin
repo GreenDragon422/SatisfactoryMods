@@ -1,9 +1,9 @@
 {
 	"FileVersion": 3,
 	"Version": 0,
-	"VersionName": "0.1.3",
-	"SemVersion": "0.1.3",
-	"GameVersion": ">=517554",
+	"VersionName": "0.1.4",
+	"SemVersion": "0.1.4",
+	"GameVersion": ">=520140",
 	"FriendlyName": "Truck Station Signs",
 	"Description": "Automatically displays each Truck Station name on a vanilla front sign.",
 	"Category": "Factory",

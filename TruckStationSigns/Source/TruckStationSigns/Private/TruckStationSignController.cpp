@@ -1,6 +1,7 @@
 #include "TruckStationSignController.h"
 
 #include "TruckStationSignPolicy.h"
+#include "TruckStationSignStationAccess.h"
 
 #include "Buildables/FGBuildableDockingStation.h"
 #include "Buildables/FGBuildableWidgetSign.h"
@@ -9,7 +10,66 @@
 #include "FGSaveInterface.h"
 #include "HAL/PlatformTime.h"
 #include "TruckStationSignsLog.h"
+#include "UObject/TextProperty.h"
+#include "UObject/UnrealType.h"
 #include "WheeledVehicles/FGDockingStationIdentifier.h"
+
+namespace TruckStationSignStationAccess
+{
+	static FProperty* FindProperty(UClass* owner, const TCHAR* name)
+	{
+		FProperty* property = FindFProperty<FProperty>(owner, FName(name));
+		UE_LOG(LogTruckStationSigns, VeryVerbose,
+			TEXT("TSS_LAYOUT_DIAGNOSTIC owner=%s property=%s type=%s runtime_offset=%d compiled_offset=unavailable"),
+			*owner->GetName(), name, property ? *property->GetClass()->GetName() : TEXT("missing"),
+			property ? property->GetOffset_ForInternal() : -1);
+		return property;
+	}
+
+	static FObjectProperty* FindObjectProperty(UClass* owner, const TCHAR* name, UClass* expectedClass)
+	{
+		FObjectProperty* property = CastField<FObjectProperty>(FindProperty(owner, name));
+		if (!property || property->PropertyClass != expectedClass || property->ArrayDim != 1)
+		{
+			UE_LOG(LogTruckStationSigns, Warning, TEXT("TSS cannot read %s.%s: unexpected reflected property type or class."), *owner->GetName(), name);
+			return nullptr;
+		}
+		return property;
+	}
+
+	AFGDockingStationIdentifier* GetIdentifier(const AFGBuildableDockingStation* station)
+	{
+		static FObjectProperty* property = FindObjectProperty(AFGBuildableDockingStation::StaticClass(), TEXT("mStationIdentifier"), AFGDockingStationIdentifier::StaticClass());
+		if (!IsValid(station) || !property) return nullptr;
+		UObject* value = property->GetObjectPropertyValue_InContainer(station);
+		return IsValid(value) ? Cast<AFGDockingStationIdentifier>(value) : nullptr;
+	}
+
+	AFGBuildableDockingStation* GetStation(const AFGDockingStationIdentifier* identifier)
+	{
+		static FObjectProperty* property = FindObjectProperty(AFGDockingStationIdentifier::StaticClass(), TEXT("mStation"), AFGBuildableDockingStation::StaticClass());
+		if (!IsValid(identifier) || !property) return nullptr;
+		UObject* value = property->GetObjectPropertyValue_InContainer(identifier);
+		return IsValid(value) ? Cast<AFGBuildableDockingStation>(value) : nullptr;
+	}
+
+	bool GetName(const AFGDockingStationIdentifier* identifier, FText& name)
+	{
+		static FTextProperty* property = []()
+		{
+			FTextProperty* result = CastField<FTextProperty>(FindProperty(AFGDockingStationIdentifier::StaticClass(), TEXT("mStationName")));
+			if (!result || result->ArrayDim != 1)
+			{
+				UE_LOG(LogTruckStationSigns, Warning, TEXT("TSS cannot read mStationName: unexpected reflected property type."));
+				return static_cast<FTextProperty*>(nullptr);
+			}
+			return result;
+		}();
+		if (!IsValid(identifier) || !property) return false;
+		name = property->GetPropertyValue_InContainer(identifier);
+		return true;
+	}
+}
 
 namespace TruckStationSignControllerConstants
 {
@@ -98,7 +158,7 @@ void FTruckStationSignController::EnqueueStationInitialization(AFGBuildableDocki
 			FTickerDelegate::CreateRaw(this, &FTruckStationSignController::TickStationInitialization));
 		UE_LOG(
 			LogTruckStationSigns,
-			Display,
+			Verbose,
 			TEXT("Started event-driven Truck Station sign initialization with a %.3f ms per-frame budget."),
 			TruckStationSignControllerConstants::InitializationFrameBudgetSeconds * 1000.0);
 	}
@@ -142,7 +202,7 @@ bool FTruckStationSignController::TickStationInitialization(float)
 	initializationState.Reset();
 	UE_LOG(
 		LogTruckStationSigns,
-		Display,
+		Verbose,
 		TEXT("Completed event-driven initialization of %d transient Truck Station signs in %.3f ms."),
 		activeSignCount,
 		elapsedMilliseconds);
@@ -198,11 +258,12 @@ void FTruckStationSignController::OnStationNameChanged(AFGDockingStationIdentifi
 		return;
 	}
 
-	AFGBuildableDockingStation* station = identifier->GetStation();
+	AFGBuildableDockingStation* station = TruckStationSignStationAccess::GetStation(identifier);
 	AFGBuildableWidgetSign* sign = EnsureSign(station);
-	if (sign != nullptr)
+	FText stationName;
+	if (sign != nullptr && TruckStationSignStationAccess::GetName(identifier, stationName))
 	{
-		ApplyNameToSign(sign, identifier->GetStationName());
+		ApplyNameToSign(sign, stationName);
 	}
 }
 
@@ -241,9 +302,11 @@ AFGBuildableWidgetSign* FTruckStationSignController::EnsureSign(AFGBuildableDock
 	if (sign != nullptr)
 	{
 		sign->SetActorRelativeTransform(signRelativeTransform);
-		AFGDockingStationIdentifier* identifier = station->GetStationIdentifier();
-		const FText stationName = identifier != nullptr ? identifier->GetStationName() : FText::GetEmpty();
-		ApplyNameToSign(sign, stationName);
+		FText stationName;
+		if (TruckStationSignStationAccess::GetName(TruckStationSignStationAccess::GetIdentifier(station), stationName))
+		{
+			ApplyNameToSign(sign, stationName);
+		}
 	}
 
 	return sign;
@@ -285,6 +348,12 @@ AFGBuildableWidgetSign* FTruckStationSignController::RecreateSignAtRelativeTrans
 		return nullptr;
 	}
 
+	FText stationName;
+	if (!TruckStationSignStationAccess::GetName(TruckStationSignStationAccess::GetIdentifier(station), stationName))
+	{
+		return nullptr;
+	}
+
 	AFGBuildableWidgetSign* existingSign = FindTrackedOrAttachedSign(station);
 	ownershipRegistry.Remove(station);
 	DestroyGeneratedSign(existingSign);
@@ -295,10 +364,6 @@ AFGBuildableWidgetSign* FTruckStationSignController::RecreateSignAtRelativeTrans
 		return nullptr;
 	}
 
-	AFGDockingStationIdentifier* identifier = station->GetStationIdentifier();
-	const FText stationName = identifier != nullptr
-		? identifier->GetStationName()
-		: FText::GetEmpty();
 	ApplyNameToSign(recreatedSign, stationName);
 	return recreatedSign;
 }
@@ -333,7 +398,7 @@ AFGBuildableWidgetSign* FTruckStationSignController::SpawnSign(
 	const FTransform& relativeTransform)
 {
 	UWorld* world = station->GetWorld();
-	if (world == nullptr || !signClass.IsValid())
+	if (world == nullptr || world->bIsTearingDown || !signClass.IsValid())
 	{
 		return nullptr;
 	}
